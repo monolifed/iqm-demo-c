@@ -1,7 +1,6 @@
 # iqm-demo-c
 Public domain iqm demo ported to C99 + glfw  
 Top level files are untouched. See **demo** folder  
-Note: currently only gpu-demo is ported
 
 # Old Readme:
 
