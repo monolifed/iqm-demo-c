@@ -3,14 +3,16 @@
 #include <string.h>
 #include <stdarg.h>
 #include <math.h>
+#include <stdbool.h>
 
 //#include <glad/gl.h>
 //#define GLFW_INCLUDE_GLEXT
 #include <GLFW/glfw3.h>
 
-#include "util.h"
-#include "geom.h"
 #include "iqm.h"
+#include "common.h"
+#define VSYNC 0
+#define WINDOW_TITLE "IQM Demo"
 
 extern GLuint loadtexture(const char *name, int clamp);
 
@@ -18,7 +20,7 @@ extern GLuint loadtexture(const char *name, int clamp);
 // of the entire IQM file's data, it is recommended that you copy the data and
 // convert it into a more suitable internal representation for whichever 3D
 // engine you use.
-uchar *meshdata = NULL, *animdata = NULL;
+uint8_t *meshdata = NULL, *animdata = NULL;
 int nummeshes = 0, numtris = 0, numverts = 0, numjoints = 0, numframes = 0, numanims = 0;
 iqmtriangle *tris = NULL, *adjacency = NULL;
 iqmmesh *meshes = NULL;
@@ -29,8 +31,11 @@ iqmanim *anims = NULL;
 iqmbounds *bounds = NULL;
 mat3x4 *baseframe = NULL, *inversebaseframe = NULL, *outframe = NULL, *frames = NULL;
 
+GLuint notexture = 0;
+uint8_t *incolor = NULL;
+
 float *inposition = NULL, *innormal = NULL, *intangent = NULL, *intexcoord = NULL;
-uchar *inblendindex = NULL, *inblendweight = NULL, *incolor = NULL;
+uint8_t *inblendindex = NULL, *inblendweight = NULL;
 float *outposition = NULL, *outnormal = NULL, *outtangent = NULL, *outbitangent = NULL;
 
 void cleanupiqm()
@@ -40,42 +45,46 @@ void cleanupiqm()
 		glDeleteTextures(nummeshes, textures);
 		free(textures);
 	}
-	free(outposition);
-	free(outnormal);
-	free(outtangent);
-	free(outbitangent);
+	if (notexture)
+		glDeleteTextures(1, &notexture);
 	free(baseframe);
 	free(inversebaseframe);
 	free(outframe);
 	free(frames);
+	
+	free(outposition);
+	free(outnormal);
+	free(outtangent);
+	free(outbitangent);
 }
 
-bool loadiqmmeshes(const char *filename, const iqmheader &hdr, uchar *buf)
+bool loadiqmmeshes(const char *filename, const iqmheader *hdr, uint8_t *buf)
 {
 	if (meshdata)
 		return false;
 		
-	leswap32(buf + hdr.ofs_vertexarrays, hdr.num_vertexarrays * sizeof(iqmvertexarray));
-	leswap32(buf + hdr.ofs_triangles, hdr.num_triangles * sizeof(iqmtriangle));
-	leswap32(buf + hdr.ofs_meshes, hdr.num_meshes * sizeof(iqmmesh));
-	leswap32(buf + hdr.ofs_joints, hdr.num_joints * sizeof(iqmjoint));
-	if (hdr.ofs_adjacency)
-		leswap32(buf + hdr.ofs_adjacency, hdr.num_triangles * sizeof(iqmtriangle));
+	leswap32(buf + hdr->ofs_vertexarrays, hdr->num_vertexarrays * sizeof(iqmvertexarray));
+	leswap32(buf + hdr->ofs_triangles, hdr->num_triangles * sizeof(iqmtriangle));
+	leswap32(buf + hdr->ofs_meshes, hdr->num_meshes * sizeof(iqmmesh));
+	leswap32(buf + hdr->ofs_joints, hdr->num_joints * sizeof(iqmjoint));
+	if (hdr->ofs_adjacency)
+		leswap32(buf + hdr->ofs_adjacency, hdr->num_triangles * sizeof(iqmtriangle));
 		
 	meshdata = buf;
-	nummeshes = hdr.num_meshes;
-	numtris = hdr.num_triangles;
-	numverts = hdr.num_vertexes;
-	numjoints = hdr.num_joints;
+	nummeshes = hdr->num_meshes;
+	numtris = hdr->num_triangles;
+	numverts = hdr->num_vertexes;
+	numjoints = hdr->num_joints;
+	outframe = malloc(sizeof(mat3x4) * hdr->num_joints);
+	textures = malloc(sizeof(GLuint) * nummeshes);
+	memset(textures, 0, nummeshes * sizeof(GLuint));
+	
 	outposition = malloc(sizeof(float) * 3 * numverts);
 	outnormal = malloc(sizeof(float) * 3 * numverts);
 	outtangent = malloc(sizeof(float) * 3 * numverts);
 	outbitangent = malloc(sizeof(float) * 3 * numverts);
-	outframe = malloc(sizeof(mat3x4) * hdr.num_joints);
-	textures = malloc(sizeof(GLuint) * nummeshes);
-	memset(textures, 0, nummeshes * sizeof(GLuint));
 	
-	const char *str = hdr.ofs_text ? (char *) &buf[hdr.ofs_text] : "";
+	const char *str = hdr->ofs_text ? (char *) &buf[hdr->ofs_text] : "";
 	iqmvertexarray *vas = (iqmvertexarray *) &buf[hdr->ofs_vertexarrays];
 	for (int i = 0; i < (int) hdr->num_vertexarrays; i++)
 	{
@@ -105,52 +114,53 @@ bool loadiqmmeshes(const char *filename, const iqmheader &hdr, uchar *buf)
 		case IQM_BLENDINDEXES:
 			if (va->format != IQM_UBYTE || va->size != 4)
 				return false;
-			inblendindex = (uchar *) &buf[va->offset]; break;
+			inblendindex = (uint8_t *) &buf[va->offset]; break;
 		case IQM_BLENDWEIGHTS:
 			if (va->format != IQM_UBYTE || va->size != 4)
 				return false;
-			inblendweight = (uchar *) &buf[va->offset]; break;
+			inblendweight = (uint8_t *) &buf[va->offset]; break;
 		case IQM_COLOR:
 			if (va->format != IQM_UBYTE || va->size != 4)
 				return false;
-			incolor = (uchar *) &buf[va->offset]; break;
+			incolor = (uint8_t *) &buf[va->offset]; break;
 		}
 	}
-	tris = (iqmtriangle *) &buf[hdr.ofs_triangles];
-	meshes = (iqmmesh *) &buf[hdr.ofs_meshes];
-	joints = (iqmjoint *) &buf[hdr.ofs_joints];
-	if (hdr.ofs_adjacency)
-		adjacency = (iqmtriangle *) &buf[hdr.ofs_adjacency];
+	tris = (iqmtriangle *) &buf[hdr->ofs_triangles];
+	meshes = (iqmmesh *) &buf[hdr->ofs_meshes];
+	joints = (iqmjoint *) &buf[hdr->ofs_joints];
+	if (hdr->ofs_adjacency)
+		adjacency = (iqmtriangle *) &buf[hdr->ofs_adjacency];
 		
-	baseframe = malloc(sizeof(mat3x4) * hdr.num_joints);
-	inversebaseframe = malloc(sizeof(mat3x4) * hdr.num_joints);
-	for (int i = 0; i < (int) hdr.num_joints; i++)
+	baseframe = malloc(sizeof(mat3x4) * hdr->num_joints);
+	inversebaseframe = malloc(sizeof(mat3x4) * hdr->num_joints);
+	for (int i = 0; i < (int) hdr->num_joints; i++)
 	{
-		iqmjoint &j = joints[i];
-		baseframe[i] = mat3x4(Quat(j.rotate).normalize(), Vec3(j.translate), Vec3(j.scale));
-		inversebaseframe[i].invert(baseframe[i]);
-		if (j.parent >= 0)
+		iqmjoint *j = joints + i;
+		mat3x4_from_rst(baseframe[i], j->rotate, j->translate, j->scale);
+		mat3x4_invert(inversebaseframe[i], baseframe[i]);
+		if (j->parent >= 0)
 		{
-			baseframe[i] = baseframe[j.parent] * baseframe[i];
-			inversebaseframe[i] *= inversebaseframe[j.parent];
+			//tempmat = baseframe[i];
+			mat3x4_mul(baseframe[i], baseframe[j->parent], baseframe[i]);
+			mat3x4_mul(inversebaseframe[i], inversebaseframe[i], inversebaseframe[j->parent]);
 		}
 	}
 	
-	for (int i = 0; i < (int) hdr.num_meshes; i++)
+	for (int i = 0; i < (int) hdr->num_meshes; i++)
 	{
-		iqmmesh &m = meshes[i];
-		printf("%s: loaded mesh: %s\n", filename, &str[m.name]);
-		textures[i] = loadtexture(&str[m.material], 0);
+		iqmmesh *m = meshes + i;
+		printf("%s: loaded mesh: %s\n", filename, &str[m->name]);
+		textures[i] = loadtexture(&str[m->material], 0);
 		if (textures[i])
-			printf("%s: loaded material: %s\n", filename, &str[m.material]);
+			printf("%s: loaded material: %s\n", filename, &str[m->material]);
 	}
 	
 	return true;
 }
 
-bool loadiqmanims(const char *filename, const iqmheader &hdr, uchar *buf)
+bool loadiqmanims(const char *filename, const iqmheader *hdr, uint8_t *buf)
 {
-	if ((int) hdr.num_poses != numjoints)
+	if ((int) hdr->num_poses != numjoints)
 		return false;
 		
 	if (animdata)
@@ -165,59 +175,64 @@ bool loadiqmanims(const char *filename, const iqmheader &hdr, uchar *buf)
 		numanims = 0;
 	}
 	
-	leswap32(buf + hdr.ofs_poses, hdr.num_poses * sizeof(iqmpose));
-	leswap32(buf + hdr.ofs_anims, hdr.num_anims * sizeof(iqmanim));
-	leswap16(buf + hdr.ofs_frames, hdr.num_frames * hdr.num_framechannels * sizeof(ushort));
-	if (hdr.ofs_bounds)
-		leswap32(buf + hdr.ofs_bounds, hdr.num_frames * sizeof(iqmbounds));
+	leswap32(buf + hdr->ofs_poses, hdr->num_poses * sizeof(iqmpose));
+	leswap32(buf + hdr->ofs_anims, hdr->num_anims * sizeof(iqmanim));
+	leswap16(buf + hdr->ofs_frames, hdr->num_frames * hdr->num_framechannels * sizeof(uint16_t));
+	if (hdr->ofs_bounds)
+		leswap32(buf + hdr->ofs_bounds, hdr->num_frames * sizeof(iqmbounds));
 		
 	animdata = buf;
-	numanims = hdr.num_anims;
-	numframes = hdr.num_frames;
+	numanims = hdr->num_anims;
+	numframes = hdr->num_frames;
 	
-	const char *str = hdr.ofs_text ? (char *) &buf[hdr.ofs_text] : "";
-	anims = (iqmanim *) &buf[hdr.ofs_anims];
-	poses = (iqmpose *) &buf[hdr.ofs_poses];
-	frames = malloc(sizeof(mat3x4) * hdr.num_frames * hdr.num_poses);
-	ushort *framedata = (ushort *) &buf[hdr.ofs_frames];
-	if (hdr.ofs_bounds)
-		bounds = (iqmbounds *) &buf[hdr.ofs_bounds];
-		
-	for (int i = 0; i < (int) hdr.num_frames; i++)
+	const char *str = hdr->ofs_text ? (char *) &buf[hdr->ofs_text] : "";
+	anims = (iqmanim *) &buf[hdr->ofs_anims];
+	poses = (iqmpose *) &buf[hdr->ofs_poses];
+	frames = malloc(sizeof(mat3x4) * hdr->num_frames * hdr->num_poses);
+	uint16_t *framedata = (uint16_t *) &buf[hdr->ofs_frames];
+	if (hdr->ofs_bounds)
+		bounds = (iqmbounds *) &buf[hdr->ofs_bounds];
+	
+	mat3x4 mat;
+	for (int i = 0; i < (int) hdr->num_frames; i++)
 	{
-		for (int j = 0; j < (int) hdr.num_poses; j++)
+		for (int j = 0; j < (int) hdr->num_poses; j++)
 		{
-			iqmpose &p = poses[j];
-			Quat rotate;
-			Vec3 translate, scale;
-			translate.x = p.channeloffset[0]; if (p.mask & 0x01) translate.x += *framedata++ * p.channelscale[0];
-			translate.y = p.channeloffset[1]; if (p.mask & 0x02) translate.y += *framedata++ * p.channelscale[1];
-			translate.z = p.channeloffset[2]; if (p.mask & 0x04) translate.z += *framedata++ * p.channelscale[2];
-			rotate.x = p.channeloffset[3]; if (p.mask & 0x08) rotate.x += *framedata++ * p.channelscale[3];
-			rotate.y = p.channeloffset[4]; if (p.mask & 0x10) rotate.y += *framedata++ * p.channelscale[4];
-			rotate.z = p.channeloffset[5]; if (p.mask & 0x20) rotate.z += *framedata++ * p.channelscale[5];
-			rotate.w = p.channeloffset[6]; if (p.mask & 0x40) rotate.w += *framedata++ * p.channelscale[6];
-			scale.x = p.channeloffset[7]; if (p.mask & 0x80) scale.x += *framedata++ * p.channelscale[7];
-			scale.y = p.channeloffset[8]; if (p.mask & 0x100) scale.y += *framedata++ * p.channelscale[8];
-			scale.z = p.channeloffset[9]; if (p.mask & 0x200) scale.z += *framedata++ * p.channelscale[9];
+			iqmpose *p = poses + j;
+			float rotate[4], translate[3], scale[3];
+			translate[0] = p->channeloffset[0]; if (p->mask &  0x01) translate[0] += *framedata++ * p->channelscale[0];
+			translate[1] = p->channeloffset[1]; if (p->mask &  0x02) translate[1] += *framedata++ * p->channelscale[1];
+			translate[2] = p->channeloffset[2]; if (p->mask &  0x04) translate[2] += *framedata++ * p->channelscale[2];
+			rotate[0]    = p->channeloffset[3]; if (p->mask &  0x08) rotate[0]    += *framedata++ * p->channelscale[3];
+			rotate[1]    = p->channeloffset[4]; if (p->mask &  0x10) rotate[1]    += *framedata++ * p->channelscale[4];
+			rotate[2]    = p->channeloffset[5]; if (p->mask &  0x20) rotate[2]    += *framedata++ * p->channelscale[5];
+			rotate[3]    = p->channeloffset[6]; if (p->mask &  0x40) rotate[3]    += *framedata++ * p->channelscale[6];
+			scale[0]     = p->channeloffset[7]; if (p->mask &  0x80) scale[0]     += *framedata++ * p->channelscale[7];
+			scale[1]     = p->channeloffset[8]; if (p->mask & 0x100) scale[1]     += *framedata++ * p->channelscale[8];
+			scale[2]     = p->channeloffset[9]; if (p->mask & 0x200) scale[2]     += *framedata++ * p->channelscale[9];
 			// Concatenate each pose with the inverse base pose to avoid doing this at animation time.
 			// If the joint has a parent, then it needs to be pre-concatenated with its parent's base pose.
 			// Thus it all negates at animation time like so:
 			//   (parentPose * parentInverseBasePose) * (parentBasePose * childPose * childInverseBasePose) =>
 			//   parentPose * (parentInverseBasePose * parentBasePose) * childPose * childInverseBasePose =>
 			//   parentPose * childPose * childInverseBasePose
-			mat3x4 m(rotate.normalize(), translate, scale);
-			if (p.parent >= 0)
-				frames[i * hdr.num_poses + j] = baseframe[p.parent] * m * inversebaseframe[j];
+			mat3x4_from_rst(mat, rotate, translate, scale);
+			if (p->parent >= 0)
+			{
+				mat3x4_mul(mat, mat, inversebaseframe[j]);
+				mat3x4_mul(frames[i * hdr->num_poses + j], baseframe[p->parent], mat);
+			}
 			else
-				frames[i * hdr.num_poses + j] = m * inversebaseframe[j];
+			{
+				mat3x4_mul(frames[i * hdr->num_poses + j], mat, inversebaseframe[j]);
+			}
 		}
 	}
 	
-	for (int i = 0; i < (int) hdr.num_anims; i++)
+	for (int i = 0; i < (int) hdr->num_anims; i++)
 	{
-		iqmanim &a = anims[i];
-		printf("%s: loaded anim: %s\n", filename, &str[a.name]);
+		//iqmanim *a = anims + i;
+		printf("%s: loaded anim: %s\n", filename, &str[anims[i].name]);
 	}
 	
 	return true;
@@ -229,22 +244,22 @@ bool loadiqm(const char *filename)
 	if (!f)
 		return false;
 		
-	uchar *buf = NULL;
+	uint8_t *buf = NULL;
 	iqmheader hdr;
 	if (fread(&hdr, 1, sizeof(hdr), f) != sizeof(hdr) || memcmp(hdr.magic, IQM_MAGIC, sizeof(hdr.magic)))
 		goto error;
-	leswap32((uchar *) &hdr.version, sizeof(hdr) - sizeof(hdr.magic));
+	leswap32((uint8_t *) &hdr.version, sizeof(hdr) - sizeof(hdr.magic));
 	if (hdr.version != IQM_VERSION)
 		goto error;
 	if (hdr.filesize > (16 << 20))
 		goto error; // sanity check... don't load files bigger than 16 MB
-	buf = malloc(sizeof(uchar) * hdr.filesize);
+	buf = malloc(sizeof(uint8_t) * hdr.filesize);
 	if (fread(buf + sizeof(hdr), 1, hdr.filesize - sizeof(hdr), f) != hdr.filesize - sizeof(hdr))
 		goto error;
 		
-	if (hdr.num_meshes > 0 && !loadiqmmeshes(filename, hdr, buf))
+	if (hdr.num_meshes > 0 && !loadiqmmeshes(filename, &hdr, buf))
 		goto error;
-	if (hdr.num_anims > 0 && !loadiqmanims(filename, hdr, buf))
+	if (hdr.num_anims > 0 && !loadiqmanims(filename, &hdr, buf))
 		goto error;
 		
 	fclose(f);
@@ -264,30 +279,35 @@ void animateiqm(float curframe)
 {
 	if (numframes <= 0)
 		return;
-		
+	
 	int frame1 = (int) floor(curframe),
 	    frame2 = frame1 + 1;
 	float frameoffset = curframe - frame1;
 	frame1 %= numframes;
 	frame2 %= numframes;
 	mat3x4 *mat1 = &frames[frame1 * numjoints],
-	           *mat2 = &frames[frame2 * numjoints];
+	        *mat2 = &frames[frame2 * numjoints];
 	// Interpolate matrixes between the two closest frames and concatenate with parent matrix if necessary.
 	// Concatenate the result with the inverse of the base pose.
 	// You would normally do animation blending and inter-frame blending here in a 3D engine.
+	mat3x4 mat;
 	for (int i = 0; i < numjoints; i++)
 	{
-		mat3x4 mat = mat1[i] * (1 - frameoffset) + mat2[i] * frameoffset;
+		for (int k = 0; k < 3; k++)
+			for (int l = 0; l < 4; l++)
+				mat[k][l] = mat1[i][k][l] * (1 - frameoffset) + mat2[i][k][l] * frameoffset;
 		if (joints[i].parent >= 0)
-			outframe[i] = outframe[joints[i].parent] * mat;
+			mat3x4_mul(outframe[i], outframe[joints[i].parent], mat);
 		else
-			outframe[i] = mat;
+			memcpy(outframe[i], mat, sizeof(mat3x4));
 	}
+	
 	// The actual vertex generation based on the matrixes follows...
-	const Vec3 *srcpos = (const Vec3 *) inposition, *srcnorm = (const Vec3 *) innormal;
-	const Vec4 *srctan = (const Vec4 *) intangent;
-	Vec3 *dstpos = (Vec3 *) outposition, *dstnorm = (Vec3 *) outnormal, *dsttan = (Vec3 *) outtangent, *dstbitan = (Vec3 *) outbitangent;
-	const uchar *index = inblendindex, *weight = inblendweight;
+	const vec3 *srcpos = (const vec3 *) inposition, *srcnorm = (const vec3 *) innormal;
+	const vec4 *srctan = (const vec4 *) intangent;
+	vec3 *dstpos = (vec3 *) outposition, *dstnorm = (vec3 *) outnormal, *dsttan = (vec3 *) outtangent, *dstbitan = (vec3 *) outbitangent;
+	const uint8_t *index = inblendindex, *weight = inblendweight;
+	mat3x4 matnorm = {0}; // with 0 translation
 	for (int i = 0; i < numverts; i++)
 	{
 		// Blend matrixes for this vertex according to its blend weights.
@@ -298,15 +318,15 @@ void animateiqm(float curframe)
 		// There are only at most 4 weights per vertex, and they are in
 		// sorted order from highest weight to lowest weight. Weights with
 		// 0 values, which are always at the end, are unused.
-		mat3x4 mat = outframe[index[0]] * (weight[0] / 255.0f);
+		mat3x4_scale(mat, weight[0] / 255.0f, outframe[index[0]]);
 		for (int j = 1; j < 4 && weight[j]; j++)
-			mat += outframe[index[j]] * (weight[j] / 255.0f);
+			mat3x4_scaleadd(mat, weight[j] / 255.0f, outframe[index[j]], mat);
 			
 		// Transform attributes by the blended matrix.
 		// Position uses the full 3x4 transformation matrix.
 		// Normals and tangents only use the 3x3 rotation part
 		// of the transformation matrix.
-		*dstpos = mat.transform(*srcpos);
+		vec3_matmul(*dstpos, mat, *srcpos);
 		
 		// Note that if the matrix includes non-uniform scaling, normal vectors
 		// must be transformed by the inverse-transpose of the matrix to have the
@@ -318,15 +338,19 @@ void animateiqm(float curframe)
 		// If you don't need to use joint scaling in your models, you can simply use the
 		// upper 3x3 part of the position matrix instead of the adjoint-transpose shown
 		// here.
-		Matrix3x3 matnorm(mat.b.cross3(mat.c), mat.c.cross3(mat.a), mat.a.cross3(mat.b));
+		vec3_cross(matnorm[0], mat[1], mat[2]);
+		vec3_cross(matnorm[1], mat[2], mat[0]);
+		vec3_cross(matnorm[2], mat[0], mat[1]);
 		
-		*dstnorm = matnorm.transform(*srcnorm);
+		vec3_matmul(*dstnorm, matnorm, *srcnorm);
 		// Note that input tangent data has 4 coordinates,
 		// so only transform the first 3 as the tangent vector.
-		*dsttan = matnorm.transform(Vec3(*srctan));
+		//*dsttan = matnorm.transform(Vec3(*srctan));
+		vec3_matmul(*dsttan, matnorm, *srctan);
 		// Note that bitangent = cross(normal, tangent) * sign,
 		// where the sign is stored in the 4th coordinate of the input tangent data.
-		*dstbitan = dstnorm->cross(*dsttan) * srctan->w;
+		vec3_cross(*dstbitan, *dstnorm, *dsttan);
+		vec3_scale(*dstbitan, (*srctan)[3], *dstbitan);
 		
 		srcpos++;
 		srcnorm++;
@@ -341,19 +365,20 @@ void animateiqm(float curframe)
 	}
 }
 
+
 float scale = 1, rotate = 0;
-Vec3 translate(0, 0, 0);
+vec3 translate = {0, 0, 0};
 
 void renderiqm()
 {
-	static const GLfloat zero[4] = { 0, 0, 0, 0 },
-	    one[4] = { 1, 1, 1, 1 },
-	        ambientcol[4] = { 0.5f, 0.5f, 0.5f, 1 },
-	            diffusecol[4] = { 0.5f, 0.5f, 0.5f, 1 },
-	                lightdir[4] = { cosf(radians(-60)), 0, sinf(radians(-60)), 0 };
-	                
+	static const GLfloat zero[4] = {0, 0, 0, 0};
+	static const GLfloat one[4] = {1, 1, 1, 1};
+	static const GLfloat ambientcol[4] = {0.5f, 0.5f, 0.5f, 1};
+	static const GLfloat diffusecol[4] = {0.5f, 0.5f, 0.5f, 1};
+	       const GLfloat lightdir[4] = {cosf(-M_PI / 3), 0, sinf(-M_PI / 3), 0};
+	
 	glPushMatrix();
-	glTranslatef(translate.x * scale, translate.y * scale, translate.z * scale);
+	glTranslatef(translate[0] * scale, translate[1] * scale, translate[2] * scale);
 	glRotatef(rotate, 0, 0, -1);
 	glScalef(scale, scale, scale);
 	
@@ -387,12 +412,11 @@ void renderiqm()
 	}
 	
 	glEnable(GL_TEXTURE_2D);
-	
 	for (int i = 0; i < nummeshes; i++)
 	{
-		iqmmesh &m = meshes[i];
-		glBindTexture(GL_TEXTURE_2D, textures[i]);
-		glDrawElements(GL_TRIANGLES, 3 * m.num_triangles, GL_UNSIGNED_INT, &tris[m.first_triangle]);
+		iqmmesh *m = meshes + i;
+		glBindTexture(GL_TEXTURE_2D, textures[i] ? textures[i] : notexture);
+		glDrawElements(GL_TRIANGLES, 3 * m->num_triangles, GL_UNSIGNED_INT, &tris[m->first_triangle]);
 	}
 	
 	glDisable(GL_TEXTURE_2D);
@@ -420,6 +444,7 @@ void initgl()
 	glDepthFunc(GL_LESS);
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
+	notexture = loadtexture("notexture.tga", 0);
 }
 
 int scrw = 0, scrh = 0;
@@ -432,15 +457,14 @@ void reshapefunc(int w, int h)
 }
 
 float camyaw = -90, campitch = 0, camroll = 0;
-Vec3 campos(20, 0, 5);
+vec3 campos = {10, 0, 5};
 
 void setupcamera()
 {
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	
-	GLdouble aspect = double(scrw) / scrh,
-	         fov = radians(90),
+	GLdouble aspect = ((double) scrw) / scrh,
+	         fov = M_PI / 2,
 	         fovy = 2 * atan2(tan(fov / 2), aspect),
 	         nearplane = 1e-2f, farplane = 1000,
 	         ydist = nearplane * tan(fovy / 2), xdist = ydist * aspect;
@@ -454,7 +478,7 @@ void setupcamera()
 	glRotatef(camyaw, 0, 1, 0);
 	glRotatef(-90, 1, 0, 0);
 	glScalef(1, -1, 1);
-	glTranslatef(-campos.x, -campos.y, -campos.z);
+	glTranslatef(-campos[0], -campos[1], -campos[2]);
 }
 
 float animate = 0;
@@ -473,38 +497,59 @@ void displayfunc(GLFWwindow *window)
 	animateiqm(animate);
 	renderiqm();
 	
+#if VSYNC == 0
+	(void) window;
 	glFlush();
-	//glfwSwapBuffers(window);
+#else
+	glfwSwapBuffers(window);
+#endif
 }
 
 static void keycallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
+	(void) scancode; (void) mods;
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	{
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
-	else if (key == GLFW_KEY_A && action == GLFW_PRESS)
-		rotate += 10;
-	else if (key == GLFW_KEY_D && action == GLFW_PRESS)
-		rotate -= 10;
-	printf("scancode: %i\n", scancode);
+		return;
+	}
+	if (action == GLFW_REPEAT)
+	{
+		switch(key)
+		{
+		case GLFW_KEY_A: rotate -= 5; break;
+		case GLFW_KEY_D: rotate += 5; break;
+		case GLFW_KEY_S: translate[0] -= .1; break;
+		case GLFW_KEY_W: translate[0] += .1; break;
+		case GLFW_KEY_Q: translate[2] -= .1; break;
+		case GLFW_KEY_E: translate[2] += .1; break;
+		}
+	}
 }
 
 
 static void errcallback(int errid, const char *errtext)
 {
+	(void) errid;
 	fprintf(stderr, "Error: %s\n", errtext);
 }
 
 int main(int argc, char **argv)
 {
+	(void) argc; (void) argv;
 	if (!glfwInit())
 		return EXIT_FAILURE;
 	glfwSetErrorCallback(errcallback);
 	
+#if VSYNC == 0
 	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
+#else
+	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+#endif
 	//glfwWindowHint(GLFW_DEPTH_BITS, 24);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-	GLFWwindow *window = glfwCreateWindow(640, 480, "IQM Demo", NULL, NULL);
+	GLFWwindow *window = glfwCreateWindow(640, 480, WINDOW_TITLE, NULL, NULL);
 	
 	if (!window)
 	{
@@ -517,31 +562,9 @@ int main(int argc, char **argv)
 	//gladLoadGL(glfwGetProcAddress);
 	glfwSwapInterval(1);
 	
+	//loadexts();
+	
 	atexit(cleanupiqm);
-	for (int i = 1; i < argc; i++)
-	{
-		if (argv[i][0] == '-')
-			switch (argv[i][1])
-			{
-			case 's':
-				if (i + 1 < argc)
-					scale = clamp(atof(argv[++i]), 1e-8, 1e8);
-				break;
-			case 'r':
-				if (i + 1 < argc)
-					rotate = atof(argv[++i]);
-				break;
-			case 't':
-				if (i + 1 < argc)
-					switch (sscanf(argv[++i], "%f , %f , %f", &translate.x, &translate.y, &translate.z))
-					{
-					case 1: translate = Vec3(0, 0, translate.x); break;
-					}
-				break;
-			}
-		else if (!loadiqm(argv[i]))
-			return EXIT_FAILURE;
-	}
 	if (!meshdata && !loadiqm("mrfixit.iqm"))
 		return EXIT_FAILURE;
 		

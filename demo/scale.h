@@ -1,10 +1,10 @@
-static void FUNCNAME(halvetexture)(uchar *src, uint sw, uint sh, uint stride, uchar *dst)
+static void FUNCNAME(halvetexture)(uint8_t *src, uint32_t sw, uint32_t sh, uint32_t stride, uint8_t *dst)
 {
-	for (uchar *yend = &src[sh * stride]; src < yend;)
+	for (uint8_t *yend = &src[sh * stride]; src < yend;)
 	{
-		for (uchar *xend = &src[sw * BPP], *xsrc = src; xsrc < xend; xsrc += 2 * BPP, dst += BPP)
+		for (uint8_t *xend = &src[sw * BPP], *xsrc = src; xsrc < xend; xsrc += 2 * BPP, dst += BPP)
 		{
-#define OP(c, n) dst[n] = ((uint) xsrc[n] + (uint) xsrc[n+BPP] + (uint) xsrc[stride+n] + (uint) xsrc[stride+n+BPP])>>2
+#define OP(c, n) dst[n] = ((uint32_t) xsrc[n] + (uint32_t) xsrc[n+BPP] + (uint32_t) xsrc[stride+n] + (uint32_t) xsrc[stride+n+BPP])>>2
 			PIXELOP
 #undef OP
 		}
@@ -12,26 +12,26 @@ static void FUNCNAME(halvetexture)(uchar *src, uint sw, uint sh, uint stride, uc
 	}
 }
 
-static void FUNCNAME(shifttexture)(uchar *src, uint sw, uint sh, uint stride, uchar *dst, uint dw, uint dh)
+static void FUNCNAME(shifttexture)(uint8_t *src, uint32_t sw, uint32_t sh, uint32_t stride, uint8_t *dst, uint32_t dw, uint32_t dh)
 {
-	uint wfrac = sw / dw, hfrac = sh / dh, wshift = 0, hshift = 0;
+	uint32_t wfrac = sw / dw, hfrac = sh / dh, wshift = 0, hshift = 0;
 	while (dw << wshift < sw)
 		wshift++;
 	while (dh << hshift < sh)
 		hshift++;
-	uint tshift = wshift + hshift;
-	for (uchar *yend = &src[sh * stride]; src < yend;)
+	uint32_t tshift = wshift + hshift;
+	for (uint8_t *yend = &src[sh * stride]; src < yend;)
 	{
-		for (uchar *xend = &src[sw * BPP], *xsrc = src; xsrc < xend; xsrc += wfrac * BPP, dst += BPP)
+		for (uint8_t *xend = &src[sw * BPP], *xsrc = src; xsrc < xend; xsrc += wfrac * BPP, dst += BPP)
 		{
 #define OP(c, n) c##t = 0
 			DEFPIXEL
 #undef OP
-			for (uchar *ycur = xsrc, *xend = &ycur[wfrac * BPP], *yend = &src[hfrac * stride];
+			for (uint8_t *ycur = xsrc, *xend = &ycur[wfrac * BPP], *yend = &src[hfrac * stride];
 			    ycur < yend;
 			    ycur += stride, xend += stride)
 			{
-				for (uchar *xcur = ycur; xcur < xend; xcur += BPP)
+				for (uint8_t *xcur = ycur; xcur < xend; xcur += BPP)
 				{
 #define OP(c, n) c##t += xcur[n]
 					PIXELOP
@@ -46,30 +46,30 @@ static void FUNCNAME(shifttexture)(uchar *src, uint sw, uint sh, uint stride, uc
 	}
 }
 
-static void FUNCNAME(scaletexture)(uchar *src, uint sw, uint sh, uint stride, uchar *dst, uint dw, uint dh)
+static void FUNCNAME(scaletexture)(uint8_t *src, uint32_t sw, uint32_t sh, uint32_t stride, uint8_t *dst, uint32_t dw, uint32_t dh)
 {
-	uint wfrac = (sw << 12) / dw, hfrac = (sh << 12) / dh, darea = dw * dh, sarea = sw * sh;
+	uint32_t wfrac = (sw << 12) / dw, hfrac = (sh << 12) / dh, darea = dw * dh, sarea = sw * sh;
 	int over, under;
 	for (over = 0; (darea >> over) > sarea; over++);
 	for (under = 0; (darea << under) < sarea; under++);
-	uint cscale = clampi(under, over - 12, 12),
-	     ascale = clampi(12 + under - over, 0, 24),
-	     dscale = ascale + 12 - cscale,
-	     area = ((ullong)darea << ascale) / sarea;
+	uint32_t cscale = clampi(under, over - 12, 12);
+	uint32_t ascale = clampi(12 + under - over, 0, 24);
+	uint32_t dscale = ascale + 12 - cscale;
+	uint32_t area = ((uint64_t)darea << ascale) / sarea;
 	dw *= wfrac;
 	dh *= hfrac;
-	for (uint y = 0; y < dh; y += hfrac)
+	for (uint32_t y = 0; y < dh; y += hfrac)
 	{
-		const uint yn = y + hfrac - 1, yi = y >> 12, h = (yn >> 12) - yi, ylow = ((yn | (-((int) h) >> 24)) & 0xFFFU) + 1 - (y & 0xFFFU), yhigh = (yn & 0xFFFU) + 1;
-		const uchar *ysrc = &src[yi * stride];
-		for (uint x = 0; x < dw; x += wfrac, dst += BPP)
+		const uint32_t yn = y + hfrac - 1, yi = y >> 12, h = (yn >> 12) - yi, ylow = ((yn | (-((int) h) >> 24)) & 0xFFFU) + 1 - (y & 0xFFFU), yhigh = (yn & 0xFFFU) + 1;
+		const uint8_t *ysrc = &src[yi * stride];
+		for (uint32_t x = 0; x < dw; x += wfrac, dst += BPP)
 		{
-			const uint xn = x + wfrac - 1, xi = x >> 12, w = (xn >> 12) - xi, xlow = ((w + 0xFFFU) & 0x1000U) - (x & 0xFFFU), xhigh = (xn & 0xFFFU) + 1;
-			const uchar *xsrc = &ysrc[xi * BPP], *xend = &xsrc[w * BPP];
+			const uint32_t xn = x + wfrac - 1, xi = x >> 12, w = (xn >> 12) - xi, xlow = ((w + 0xFFFU) & 0x1000U) - (x & 0xFFFU), xhigh = (xn & 0xFFFU) + 1;
+			const uint8_t *xsrc = &ysrc[xi * BPP], *xend = &xsrc[w * BPP];
 #define OP(c, n) c##t = 0
 			DEFPIXEL
 #undef OP
-			for (const uchar *xcur = &xsrc[BPP]; xcur < xend; xcur += BPP)
+			for (const uint8_t *xcur = &xsrc[BPP]; xcur < xend; xcur += BPP)
 			{
 #define OP(c, n) c##t += xcur[n]
 				PIXELOP
@@ -82,12 +82,12 @@ static void FUNCNAME(scaletexture)(uchar *src, uint sw, uint sh, uint stride, uc
 			{
 				xsrc += stride;
 				xend += stride;
-				for (uint hcur = h; --hcur; xsrc += stride, xend += stride)
+				for (uint32_t hcur = h; --hcur; xsrc += stride, xend += stride)
 				{
 #define OP(c, n) c = 0
 					DEFPIXEL
 #undef OP
-					for (const uchar *xcur = &xsrc[BPP]; xcur < xend; xcur += BPP)
+					for (const uint8_t *xcur = &xsrc[BPP]; xcur < xend; xcur += BPP)
 					{
 #define OP(c, n) c += xcur[n]
 						PIXELOP
@@ -100,7 +100,7 @@ static void FUNCNAME(scaletexture)(uchar *src, uint sw, uint sh, uint stride, uc
 #define OP(c, n) c = 0
 				DEFPIXEL
 #undef OP
-				for (const uchar *xcur = &xsrc[BPP]; xcur < xend; xcur += BPP)
+				for (const uint8_t *xcur = &xsrc[BPP]; xcur < xend; xcur += BPP)
 				{
 #define OP(c, n) c += xcur[n]
 					PIXELOP

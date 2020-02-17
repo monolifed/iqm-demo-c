@@ -4,33 +4,33 @@
 #define IQM_MAGIC "INTERQUAKEMODEL"
 #define IQM_VERSION 2
 
-typedef struct iqmheader
+typedef struct iqmheader_s
 {
-	char magic[16];
-	unsigned int version;
-	unsigned int filesize;
-	unsigned int flags;
-	unsigned int num_text, ofs_text;
-	unsigned int num_meshes, ofs_meshes;
-	unsigned int num_vertexarrays, num_vertexes, ofs_vertexarrays;
-	unsigned int num_triangles, ofs_triangles, ofs_adjacency;
-	unsigned int num_joints, ofs_joints;
-	unsigned int num_poses, ofs_poses;
-	unsigned int num_anims, ofs_anims;
-	unsigned int num_frames, num_framechannels, ofs_frames, ofs_bounds;
-	unsigned int num_comment, ofs_comment;
-	unsigned int num_extensions, ofs_extensions;
+	uint8_t magic[16];
+	uint32_t version;
+	uint32_t filesize;
+	uint32_t flags;
+	uint32_t num_text, ofs_text;
+	uint32_t num_meshes, ofs_meshes;
+	uint32_t num_vertexarrays, num_vertexes, ofs_vertexarrays;
+	uint32_t num_triangles, ofs_triangles, ofs_adjacency;
+	uint32_t num_joints, ofs_joints;
+	uint32_t num_poses, ofs_poses;
+	uint32_t num_anims, ofs_anims;
+	uint32_t num_frames, num_framechannels, ofs_frames, ofs_bounds;
+	uint32_t num_comment, ofs_comment;
+	uint32_t num_extensions, ofs_extensions;
 } iqmheader;
 
-typedef struct iqmmesh
+typedef struct iqmmesh_s
 {
-	unsigned int name;
-	unsigned int material;
-	unsigned int first_vertex, num_vertexes;
-	unsigned int first_triangle, num_triangles;
+	uint32_t name;
+	uint32_t material;
+	uint32_t first_vertex, num_vertexes;
+	uint32_t first_triangle, num_triangles;
 } iqmmesh;
 
-enum
+typedef enum
 {
 	IQM_POSITION     = 0,
 	IQM_TEXCOORD     = 1,
@@ -40,9 +40,9 @@ enum
 	IQM_BLENDWEIGHTS = 5,
 	IQM_COLOR        = 6,
 	IQM_CUSTOM       = 0x10
-};
+} iqmvatype;
 
-enum
+typedef enum
 {
 	IQM_BYTE   = 0,
 	IQM_UBYTE  = 1,
@@ -53,56 +53,56 @@ enum
 	IQM_HALF   = 6,
 	IQM_FLOAT  = 7,
 	IQM_DOUBLE = 8,
-};
+} iqmvaformat;
 
-typedef struct iqmtriangle
+typedef struct iqmtriangle_s
 {
-	unsigned int vertex[3];
+	uint32_t vertex[3];
 } iqmtriangle;
 
-typedef struct iqmadjacency
+typedef struct iqmadjacency_s
 {
-	unsigned int triangle[3];
+	uint32_t triangle[3];
 } iqmadjacency;
 
-typedef struct iqmjoint
+typedef struct iqmjoint_s
 {
-	unsigned int name;
-	int parent;
+	uint32_t name;
+	int32_t parent;
 	float translate[3], rotate[4], scale[3];
 } iqmjoint;
 
-typedef struct iqmpose
+typedef struct iqmpose_s
 {
-	int parent;
-	unsigned int mask;
+	int32_t parent;
+	uint32_t mask;
 	float channeloffset[10];
 	float channelscale[10];
 } iqmpose;
 
-typedef struct iqmanim
+typedef struct iqmanim_s
 {
-	unsigned int name;
-	unsigned int first_frame, num_frames;
+	uint32_t name;
+	uint32_t first_frame, num_frames;
 	float framerate;
-	unsigned int flags;
+	uint32_t flags;
 } iqmanim;
 
-enum
+typedef enum
 {
 	IQM_LOOP = 1 << 0
-};
+} iqmanimflag;
 
-typedef struct iqmvertexarray
+typedef struct iqmvertexarray_s
 {
-	unsigned int type;
-	unsigned int flags;
-	unsigned int format;
-	unsigned int size;
-	unsigned int offset;
+	uint32_t type;
+	uint32_t flags;
+	uint32_t format;
+	uint32_t size;
+	uint32_t offset;
 } iqmvertexarray;
 
-typedef struct iqmbounds
+typedef struct iqmbounds_s
 {
 	float bbmin[3], bbmax[3];
 	float xyradius, radius;

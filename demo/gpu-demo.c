@@ -10,97 +10,47 @@
 #include <GLFW/glfw3.h>
 
 #include "iqm.h"
+#include "common.h"
+#define VSYNC 0
+#define WINDOW_TITLE "IQM GPU Skinning Demo"
 
-#ifndef M_PI
-    #define M_PI 3.14159265358979323846
-#endif
+#define REGISTER_EXTENSIONS \
+	REXT(PFNGLUSEPROGRAMPROC, glUseProgram, true) \
+	REXT(PFNGLCREATEPROGRAMPROC, glCreateProgram, true) \
+	REXT(PFNGLCREATESHADERPROC, glCreateShader, true) \
+	REXT(PFNGLDELETEPROGRAMPROC, glDeleteProgram, true) \
+	REXT(PFNGLDELETESHADERPROC, glDeleteShader, true) \
+	REXT(PFNGLATTACHSHADERPROC, glAttachShader, true) \
+	REXT(PFNGLBINDATTRIBLOCATIONPROC, glBindAttribLocation, true) \
+	REXT(PFNGLCOMPILESHADERPROC, glCompileShader, true) \
+	REXT(PFNGLLINKPROGRAMPROC, glLinkProgram, true) \
+	REXT(PFNGLSHADERSOURCEPROC, glShaderSource, true) \
+	REXT(PFNGLGETPROGRAMIVPROC, glGetProgramiv, true) \
+	REXT(PFNGLGETSHADERIVPROC, glGetShaderiv, true) \
+	REXT(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog, true) \
+	REXT(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog, true) \
+	REXT(PFNGLDISABLEVERTEXATTRIBARRAYPROC, glDisableVertexAttribArray, true) \
+	REXT(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray, true) \
+	REXT(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer, true) \
+	REXT(PFNGLUNIFORMMATRIX3X4FVPROC, glUniformMatrix3x4fv, true) \
+	REXT(PFNGLUNIFORM1IPROC, glUniform1i, true) \
+	REXT(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation, true) \
+	REXT(PFNGLBINDBUFFERPROC, glBindBuffer, true) \
+	REXT(PFNGLDELETEBUFFERSPROC, glDeleteBuffers, true) \
+	REXT(PFNGLGENBUFFERSPROC, glGenBuffers, true) \
+	REXT(PFNGLBUFFERDATAPROC, glBufferData, true) \
+	REXT(PFNGLBUFFERSUBDATAPROC, glBufferSubData, true) \
+	REXT(PFNGLGETUNIFORMINDICESPROC, glGetUniformIndices, hasUBO) \
+	REXT(PFNGLGETACTIVEUNIFORMSIVPROC, glGetActiveUniformsiv, hasUBO) \
+	REXT(PFNGLGETUNIFORMBLOCKINDEXPROC, glGetUniformBlockIndex, hasUBO) \
+	REXT(PFNGLGETACTIVEUNIFORMBLOCKIVPROC, glGetActiveUniformBlockiv, hasUBO) \
+	REXT(PFNGLUNIFORMBLOCKBINDINGPROC, glUniformBlockBinding, hasUBO) \
+	REXT(PFNGLBINDBUFFERBASEPROC, glBindBufferBase, hasUBO) \
+	REXT(PFNGLBINDBUFFERRANGEPROC, glBindBufferRange, hasUBO)
 
-typedef unsigned char uchar;
-typedef unsigned short ushort;
-typedef unsigned int uint;
-typedef signed long long int llong;
-typedef unsigned long long int ullong;
-
-//static float clampf(float val, float min, float max)
-//{
-//	return val < min ? min : (val > max ? max : val);
-//}
-
-static inline bool isle(void)
-{
-	union
-	{
-		int i;
-		uchar b[sizeof(int)];
-	} conv;
-	conv.i = 1;
-	return conv.b[0] != 0;
-}
-
-static void leswap16(uchar *buffer, size_t len)
-{
-	if (isle())
-		return;
-	uchar temp;
-	for (unsigned i = 1; i < len; i += 2)
-	{
-		temp = buffer[i - 1];
-		buffer[i - 1] = buffer[i];
-		buffer[i] = temp;
-	}
-}
-static void leswap32(uchar *buffer, size_t len)
-{
-	if (isle())
-		return;
-	uchar temp;
-	for (unsigned i = 3; i < len; i += 4)
-	{
-		temp = buffer[i - 3];
-		buffer[i - 3] = buffer[i];
-		buffer[i] = temp;
-		temp = buffer[i - 2];
-		buffer[i - 2] = buffer[i - 1];
-		buffer[i - 1] = temp;
-	}
-}
-
-#define EXTS(EXT) \
-	EXT(PFNGLUSEPROGRAMPROC, glUseProgram, true) \
-	EXT(PFNGLCREATEPROGRAMPROC, glCreateProgram, true) \
-	EXT(PFNGLCREATESHADERPROC, glCreateShader, true) \
-	EXT(PFNGLDELETEPROGRAMPROC, glDeleteProgram, true) \
-	EXT(PFNGLDELETESHADERPROC, glDeleteShader, true) \
-	EXT(PFNGLATTACHSHADERPROC, glAttachShader, true) \
-	EXT(PFNGLBINDATTRIBLOCATIONPROC, glBindAttribLocation, true) \
-	EXT(PFNGLCOMPILESHADERPROC, glCompileShader, true) \
-	EXT(PFNGLLINKPROGRAMPROC, glLinkProgram, true) \
-	EXT(PFNGLSHADERSOURCEPROC, glShaderSource, true) \
-	EXT(PFNGLGETPROGRAMIVPROC, glGetProgramiv, true) \
-	EXT(PFNGLGETSHADERIVPROC, glGetShaderiv, true) \
-	EXT(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog, true) \
-	EXT(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog, true) \
-	EXT(PFNGLDISABLEVERTEXATTRIBARRAYPROC, glDisableVertexAttribArray, true) \
-	EXT(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray, true) \
-	EXT(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer, true) \
-	EXT(PFNGLUNIFORMMATRIX3X4FVPROC, glUniformMatrix3x4fv, true) \
-	EXT(PFNGLUNIFORM1IPROC, glUniform1i, true) \
-	EXT(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation, true) \
-	EXT(PFNGLBINDBUFFERPROC, glBindBuffer, true) \
-	EXT(PFNGLDELETEBUFFERSPROC, glDeleteBuffers, true) \
-	EXT(PFNGLGENBUFFERSPROC, glGenBuffers, true) \
-	EXT(PFNGLBUFFERDATAPROC, glBufferData, true) \
-	EXT(PFNGLBUFFERSUBDATAPROC, glBufferSubData, true) \
-	EXT(PFNGLGETUNIFORMINDICESPROC, glGetUniformIndices, hasUBO) \
-	EXT(PFNGLGETACTIVEUNIFORMSIVPROC, glGetActiveUniformsiv, hasUBO) \
-	EXT(PFNGLGETUNIFORMBLOCKINDEXPROC, glGetUniformBlockIndex, hasUBO) \
-	EXT(PFNGLGETACTIVEUNIFORMBLOCKIVPROC, glGetActiveUniformBlockiv, hasUBO) \
-	EXT(PFNGLUNIFORMBLOCKBINDINGPROC, glUniformBlockBinding, hasUBO) \
-	EXT(PFNGLBINDBUFFERBASEPROC, glBindBufferBase, hasUBO) \
-	EXT(PFNGLBINDBUFFERRANGEPROC, glBindBufferRange, hasUBO)
-
-#define DEFEXT(type, name, required) type name##_ = NULL;
-EXTS(DEFEXT)
+#define REXT(type, name, required) type name##_ = NULL;
+REGISTER_EXTENSIONS
+#undef REXT
 
 GLFWglproc requireext(const char *procname)
 {
@@ -115,14 +65,209 @@ GLFWglproc requireext(const char *procname)
 
 bool hasUBO = false;
 
-void loadexts()
+typedef struct binding_s
+{
+	const char *name;
+	GLint index;
+} binding;
+
+typedef struct shader_s
+{
+	const char *name, *vsstr, *psstr;
+	const binding *attribs, *texs;
+	GLuint vs, ps, program, vsobj, psobj;
+} shader;
+
+static const binding gpuskinattribs[] = {{"vtangent", 1}, {"vweights", 6}, {"vbones", 7}, {NULL, -1}};
+static const binding gpuskintexs[] = {{"tex", 0}, {NULL, -1}};
+static shader gpuskin =
+{
+	.name = "gpu skin",
+	
+	.vsstr =
+	"#version 120\n"
+	"#ifdef GL_ARB_uniform_buffer_object\n"
+	"  #extension GL_ARB_uniform_buffer_object : enable\n"
+	"  layout(std140) uniform animdata\n"
+	"  {\n"
+	"     uniform mat3x4 bonemats[80];\n"
+	"  };\n"
+	"#else\n"
+	"  uniform mat3x4 bonemats[80];\n"
+	"#endif\n"
+	"attribute vec4 vweights;\n"
+	"attribute vec4 vbones;\n"
+	"attribute vec4 vtangent;\n"
+	"void main(void)\n"
+	"{\n"
+	"   mat3x4 m = bonemats[int(vbones.x)] * vweights.x;\n"
+	"   m += bonemats[int(vbones.y)] * vweights.y;\n"
+	"   m += bonemats[int(vbones.z)] * vweights.z;\n"
+	"   m += bonemats[int(vbones.w)] * vweights.w;\n"
+	"   vec4 mpos = vec4(gl_Vertex * m, gl_Vertex.w);\n"
+	"   gl_Position = gl_ModelViewProjectionMatrix * mpos;\n"
+	"   gl_TexCoord[0] = gl_MultiTexCoord0;\n"
+	"   mat3 madjtrans = mat3(cross(m[1].xyz, m[2].xyz), cross(m[2].xyz, m[0].xyz), cross(m[0].xyz, m[1].xyz));\n"
+	"   vec3 mnormal = gl_Normal * madjtrans;\n"
+	"   vec3 mtangent = vtangent.xyz * madjtrans; // tangent not used, just here as an example\n"
+	"   vec3 mbitangent = cross(mnormal, mtangent) * vtangent.w; // bitangent not used, just here as an example\n"
+	"   gl_FrontColor = gl_Color * (clamp(dot(normalize(gl_NormalMatrix * mnormal), gl_LightSource[0].position.xyz), 0.0, 1.0) * gl_LightSource[0].diffuse + gl_LightSource[0].ambient);\n"
+	"}\n",
+	
+	.psstr =
+	"uniform sampler2D tex;\n"
+	"void main(void)\n"
+	"{\n"
+	"   gl_FragColor = gl_Color * texture2D(tex, gl_TexCoord[0].xy);\n"
+	"}\n",
+	
+	.attribs = gpuskinattribs,
+	.texs = gpuskintexs,
+	.vs = 0, .ps = 0, .program = 0, .vsobj = 0, .psobj = 0
+};
+
+static const binding noskinattribs[] = {{"vtangent", 1}, {NULL, -1}};
+static const binding noskintexs[] = {{"tex", 0}, {NULL, -1}};
+static shader noskin =
+{
+	.name = "no skin",
+	
+	.vsstr =
+	"attribute vec4 vtangent;\n"
+	"void main(void)\n"
+	"{\n"
+	"   gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
+	"   gl_TexCoord[0] = gl_MultiTexCoord0;\n"
+	"   vec3 vbitangent = cross(gl_Normal, vtangent.xyz) * vtangent.w; // bitangent not used, just here as an example\n"
+	"   gl_FrontColor = gl_Color * (clamp(dot(normalize(gl_NormalMatrix * gl_Normal), gl_LightSource[0].position.xyz), 0.0, 1.0) * gl_LightSource[0].diffuse + gl_LightSource[0].ambient);\n"
+	"}\n",
+	
+	.psstr =
+	"uniform sampler2D tex;\n"
+	"void main(void)\n"
+	"{\n"
+	"   gl_FragColor = gl_Color * texture2D(tex, gl_TexCoord[0].xy);\n"
+	"}\n",
+	
+	.attribs = noskinattribs,
+	.texs = noskintexs,
+	.vs = 0, .ps = 0, .program = 0, .vsobj = 0, .psobj = 0
+};
+
+static void showinfo(GLuint obj, const char *tname, const char *name)
+{
+	GLint length = 0;
+	if (!strcmp(tname, "PROG"))
+		glGetProgramiv_(obj, GL_INFO_LOG_LENGTH, &length);
+	else
+		glGetShaderiv_(obj, GL_INFO_LOG_LENGTH, &length);
+	if (length > 1)
+	{
+		GLchar *log = malloc(sizeof(GLchar) * length);
+		if (!strcmp(tname, "PROG"))
+			glGetProgramInfoLog_(obj, length, &length, log);
+		else
+			glGetShaderInfoLog_(obj, length, &length, log);
+		printf("GLSL ERROR (%s:%s)\n", tname, name);
+		puts(log);
+		free(log);
+	}
+}
+
+static void compshader(GLenum type, GLuint *obj, const char *def, const char *tname, const char *name)
+{
+	const GLchar *source = (const GLchar *)(def + strspn(def, " \t\r\n"));
+	*obj = glCreateShader_(type);
+	glShaderSource_(*obj, 1, &source, NULL);
+	glCompileShader_(*obj);
+	GLint success;
+	glGetShaderiv_(*obj, GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		showinfo(*obj, tname, name);
+		glDeleteShader_(*obj);
+		*obj = 0;
+		fprintf(stderr, "error compiling shader\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void shader_link(shader *s)
+{
+	s->program = s->vsobj && s->psobj ? glCreateProgram_() : 0;
+	GLint success = 0;
+	if (s->program)
+	{
+		glAttachShader_(s->program, s->vsobj);
+		glAttachShader_(s->program, s->psobj);
+		
+		if (s->attribs)
+			for (const binding *a = s->attribs; a->name; a++)
+				glBindAttribLocation_(s->program, a->index, a->name);
+				
+		glLinkProgram_(s->program);
+		glGetProgramiv_(s->program, GL_LINK_STATUS, &success);
+	}
+	if (!success)
+	{
+		if (s->program)
+		{
+			showinfo(s->program, "PROG", s->name);
+			glDeleteProgram_(s->program);
+			s->program = 0;
+		}
+		fprintf(stderr, "error linking shader\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void shader_compile(shader *s)
+{
+	if (!s->vsstr || !s->psstr)
+		return;
+	compshader(GL_VERTEX_SHADER,   &s->vsobj, s->vsstr, "VS", s->name);
+	compshader(GL_FRAGMENT_SHADER, &s->psobj, s->psstr, "PS", s->name);
+	shader_link(s);
+}
+
+static GLint shader_getparam(shader *s, const char *pname)
+{
+	return glGetUniformLocation_(s->program, pname);
+}
+
+static void shader_set(shader *s)
+{
+	glUseProgram_(s->program);
+	if (!s->texs)
+		return;
+	GLint loc;
+	for (const binding *t = s->texs; t->name; t++)
+	{
+		loc = shader_getparam(s, t->name);
+		if (loc != -1)
+			glUniform1i_(loc, t->index);
+	}
+}
+
+static void loadexts()
 {
 	hasUBO = glfwExtensionSupported("GL_ARB_uniform_buffer_object") == GLFW_TRUE;
 	
-#define LOADEXT(type, name, required) \
+#define REXT(type, name, required) \
 	if (required) { name##_ = (type) requireext(#name); }
-	EXTS(LOADEXT)
+	REGISTER_EXTENSIONS
+#undef REXT
 }
+
+typedef struct vertex_s
+{
+	GLfloat position[3];
+	GLfloat normal[3];
+	GLfloat tangent[4];
+	GLfloat texcoord[2];
+	GLubyte blendindex[4];
+	GLubyte blendweight[4];
+} vertex;
 
 extern GLuint loadtexture(const char *name, int clamp);
 
@@ -130,14 +275,7 @@ extern GLuint loadtexture(const char *name, int clamp);
 // of the entire IQM file's data, it is recommended that you copy the data and
 // convert it into a more suitable internal representation for whichever 3D
 // engine you use.
-
-typedef float vec3[3];
-typedef float vec4[4];
-typedef float quat[4];
-typedef vec4 mat3x4[3];
-
-
-uchar *meshdata = NULL, *animdata = NULL;
+uint8_t *meshdata = NULL, *animdata = NULL;
 int nummeshes = 0, numtris = 0, numverts = 0, numjoints = 0, numframes = 0, numanims = 0;
 iqmtriangle *tris = NULL, *adjacency = NULL;
 iqmmesh *meshes = NULL;
@@ -149,16 +287,8 @@ iqmbounds *bounds = NULL;
 mat3x4 *baseframe = NULL, *inversebaseframe = NULL, *outframe = NULL, *frames = NULL;
 
 GLuint notexture = 0;
+uint8_t *incolor = NULL;
 
-typedef struct vertex
-{
-	GLfloat position[3];
-	GLfloat normal[3];
-	GLfloat tangent[4];
-	GLfloat texcoord[2];
-	GLubyte blendindex[4];
-	GLubyte blendweight[4];
-} vertex;
 GLuint ebo = 0, vbo = 0, ubo = 0;
 GLint ubosize = 0, bonematsoffset = 0;
 
@@ -175,6 +305,7 @@ void cleanupiqm()
 	free(inversebaseframe);
 	free(outframe);
 	free(frames);
+	
 	if (ebo)
 		glDeleteBuffers_(1, &ebo);
 	if (vbo)
@@ -183,71 +314,7 @@ void cleanupiqm()
 		glDeleteBuffers_(1, &ubo);
 }
 
-void mat3x4_from_rst(mat3x4 m, const quat q, const vec3 t, const vec3 s)
-{
-	float x = q[0], y = q[1], z = q[2], w = q[3];
-	float n = sqrtf(x * x + y * y + z * z + w * w);
-	x /= n; y /= n; z /= n; w /= n;
-	float xx = 2 * x * x, yy = 2 * y * y, zz = 2 * z * z;
-	float xy = 2 * x * y, xz = 2 * x * z, yz = 2 * y * z;
-	float wx = 2 * w * x, wy = 2 * w * y, wz = 2 * w * z;
-	float sx = s[0], sy = s[1], sz = s[2];
-	m[0][0] = sx * (1 - (yy + zz));
-	m[1][0] = sx * (xy + wz);
-	m[2][0] = sx * (xz - wy);
-	m[0][1] = sy * (xy - wz);
-	m[1][1] = sy * (1 - (xx + zz));
-	m[2][1] = sy * (yz + wx);
-	m[0][2] = sz * (xz + wy);
-	m[1][2] = sz * (yz - wx);
-	m[2][2] = sz * (1 - (xx + yy));
-	m[0][3] = t[0];
-	m[1][3] = t[1];
-	m[2][3] = t[2];
-}
-
-void mat3x4_mul(mat3x4 ret, mat3x4 f, mat3x4 g)
-{
-	mat3x4 m;
-	m[0][0] = g[0][0] * f[0][0] + g[1][0] * f[0][1] + g[2][0] * f[0][2];
-	m[0][1] = g[0][1] * f[0][0] + g[1][1] * f[0][1] + g[2][1] * f[0][2];
-	m[0][2] = g[0][2] * f[0][0] + g[1][2] * f[0][1] + g[2][2] * f[0][2];
-	m[0][3] = g[0][3] * f[0][0] + g[1][3] * f[0][1] + g[2][3] * f[0][2] + f[0][3];
-	m[1][0] = g[0][0] * f[1][0] + g[1][0] * f[1][1] + g[2][0] * f[1][2];
-	m[1][1] = g[0][1] * f[1][0] + g[1][1] * f[1][1] + g[2][1] * f[1][2];
-	m[1][2] = g[0][2] * f[1][0] + g[1][2] * f[1][1] + g[2][2] * f[1][2];
-	m[1][3] = g[0][3] * f[1][0] + g[1][3] * f[1][1] + g[2][3] * f[1][2] + f[1][3];
-	m[2][0] = g[0][0] * f[2][0] + g[1][0] * f[2][1] + g[2][0] * f[2][2];
-	m[2][1] = g[0][1] * f[2][0] + g[1][1] * f[2][1] + g[2][1] * f[2][2];
-	m[2][2] = g[0][2] * f[2][0] + g[1][2] * f[2][1] + g[2][2] * f[2][2];
-	m[2][3] = g[0][3] * f[2][0] + g[1][3] * f[2][1] + g[2][3] * f[2][2] + f[2][3];
-	memcpy(ret, m, sizeof(mat3x4));
-}
-
-void mat3x4_invert(mat3x4 i, mat3x4 m)
-{
-	float n, x, y, z;
-	
-	x = m[0][0]; y = m[1][0]; z = m[2][0];
-	n = sqrtf(x * x + y * y + z * z);
-	i[0][0] = x / n; i[0][1] = y / n; i[0][2] = z / n;
-	
-	x = m[0][1]; y = m[1][1]; z = m[2][1];
-	n = sqrtf(x * x + y * y + z * z);
-	i[1][0] = x / n; i[1][1] = y / n; i[1][2] = z / n;
-	
-	x = m[0][2]; y = m[1][2]; z = m[2][2];
-	n = sqrtf(x * x + y * y + z * z);
-	i[2][0] = x / n; i[2][1] = y / n; i[2][2] = z / n;
-	
-	x = m[0][3]; y = m[1][3]; z = m[2][3];
-	
-	i[0][3] = -(i[0][0] * x + i[0][1] * y + i[0][2] * z);
-	i[1][3] = -(i[1][0] * x + i[1][1] * y + i[1][2] * z);
-	i[2][3] = -(i[2][0] * x + i[2][1] * y + i[2][2] * z);
-}
-
-bool loadiqmmeshes(const char *filename, const iqmheader *hdr, uchar *buf)
+bool loadiqmmeshes(const char *filename, const iqmheader *hdr, uint8_t *buf)
 {
 	if (meshdata)
 		return false;
@@ -269,7 +336,7 @@ bool loadiqmmeshes(const char *filename, const iqmheader *hdr, uchar *buf)
 	memset(textures, 0, nummeshes * sizeof(GLuint));
 	
 	float *inposition = NULL, *innormal = NULL, *intangent = NULL, *intexcoord = NULL;
-	uchar *inblendindex = NULL, *inblendweight = NULL;
+	uint8_t *inblendindex = NULL, *inblendweight = NULL;
 	const char *str = hdr->ofs_text ? (char *) &buf[hdr->ofs_text] : "";
 	iqmvertexarray *vas = (iqmvertexarray *) &buf[hdr->ofs_vertexarrays];
 	for (int i = 0; i < (int) hdr->num_vertexarrays; i++)
@@ -300,12 +367,15 @@ bool loadiqmmeshes(const char *filename, const iqmheader *hdr, uchar *buf)
 		case IQM_BLENDINDEXES:
 			if (va->format != IQM_UBYTE || va->size != 4)
 				return false;
-			inblendindex = (uchar *) &buf[va->offset]; break;
+			inblendindex = (uint8_t *) &buf[va->offset]; break;
 		case IQM_BLENDWEIGHTS:
 			if (va->format != IQM_UBYTE || va->size != 4)
 				return false;
-			inblendweight = (uchar *) &buf[va->offset]; break;
-			//case IQM_COLOR: if (va->format != IQM_UBYTE || va->size != 4) return false; incolor = (uchar *) &buf[va->offset]; break;
+			inblendweight = (uint8_t *) &buf[va->offset]; break;
+		case IQM_COLOR:
+			if (va->format != IQM_UBYTE || va->size != 4)
+				return false;
+			incolor = (uint8_t *) &buf[va->offset]; break;
 		}
 	}
 	tris = (iqmtriangle *) &buf[hdr->ofs_triangles];
@@ -373,7 +443,7 @@ bool loadiqmmeshes(const char *filename, const iqmheader *hdr, uchar *buf)
 	return true;
 }
 
-bool loadiqmanims(const char *filename, const iqmheader *hdr, uchar *buf)
+bool loadiqmanims(const char *filename, const iqmheader *hdr, uint8_t *buf)
 {
 	if ((int) hdr->num_poses != numjoints)
 		return false;
@@ -392,7 +462,7 @@ bool loadiqmanims(const char *filename, const iqmheader *hdr, uchar *buf)
 	
 	leswap32(buf + hdr->ofs_poses, hdr->num_poses * sizeof(iqmpose));
 	leswap32(buf + hdr->ofs_anims, hdr->num_anims * sizeof(iqmanim));
-	leswap16(buf + hdr->ofs_frames, hdr->num_frames * hdr->num_framechannels * sizeof(ushort));
+	leswap16(buf + hdr->ofs_frames, hdr->num_frames * hdr->num_framechannels * sizeof(uint16_t));
 	if (hdr->ofs_bounds)
 		leswap32(buf + hdr->ofs_bounds, hdr->num_frames * sizeof(iqmbounds));
 		
@@ -404,10 +474,11 @@ bool loadiqmanims(const char *filename, const iqmheader *hdr, uchar *buf)
 	anims = (iqmanim *) &buf[hdr->ofs_anims];
 	poses = (iqmpose *) &buf[hdr->ofs_poses];
 	frames = malloc(sizeof(mat3x4) * hdr->num_frames * hdr->num_poses);
-	ushort *framedata = (ushort *) &buf[hdr->ofs_frames];
+	uint16_t *framedata = (uint16_t *) &buf[hdr->ofs_frames];
 	if (hdr->ofs_bounds)
 		bounds = (iqmbounds *) &buf[hdr->ofs_bounds];
-		
+	
+	mat3x4 mat;
 	for (int i = 0; i < (int) hdr->num_frames; i++)
 	{
 		for (int j = 0; j < (int) hdr->num_poses; j++)
@@ -430,19 +501,15 @@ bool loadiqmanims(const char *filename, const iqmheader *hdr, uchar *buf)
 			//   (parentPose * parentInverseBasePose) * (parentBasePose * childPose * childInverseBasePose) =>
 			//   parentPose * (parentInverseBasePose * parentBasePose) * childPose * childInverseBasePose =>
 			//   parentPose * childPose * childInverseBasePose
-			//Matrix3x4 m(rotate.normalize(), translate, scale);
-			mat3x4 m;
-			mat3x4_from_rst(m, rotate, translate, scale);
+			mat3x4_from_rst(mat, rotate, translate, scale);
 			if (p->parent >= 0)
 			{
-				//frames[i * hdr->num_poses + j] = baseframe[p.parent] * m * inversebaseframe[j];
-				mat3x4_mul(m, m, inversebaseframe[j]);
-				mat3x4_mul(frames[i * hdr->num_poses + j], baseframe[p->parent], m);
+				mat3x4_mul(mat, mat, inversebaseframe[j]);
+				mat3x4_mul(frames[i * hdr->num_poses + j], baseframe[p->parent], mat);
 			}
 			else
 			{
-				mat3x4_mul(frames[i * hdr->num_poses + j], m, inversebaseframe[j]);
-				//frames[i * hdr->num_poses + j] = m * inversebaseframe[j];
+				mat3x4_mul(frames[i * hdr->num_poses + j], mat, inversebaseframe[j]);
 			}
 		}
 	}
@@ -462,16 +529,16 @@ bool loadiqm(const char *filename)
 	if (!f)
 		return false;
 		
-	uchar *buf = NULL;
+	uint8_t *buf = NULL;
 	iqmheader hdr;
 	if (fread(&hdr, 1, sizeof(hdr), f) != sizeof(hdr) || memcmp(hdr.magic, IQM_MAGIC, sizeof(hdr.magic)))
 		goto error;
-	leswap32((uchar *) &hdr.version, sizeof(hdr) - sizeof(hdr.magic));
+	leswap32((uint8_t *) &hdr.version, sizeof(hdr) - sizeof(hdr.magic));
 	if (hdr.version != IQM_VERSION)
 		goto error;
 	if (hdr.filesize > (16 << 20))
 		goto error; // sanity check... don't load files bigger than 16 MB
-	buf = malloc(sizeof(uchar) * hdr.filesize);
+	buf = malloc(sizeof(uint8_t) * hdr.filesize);
 	if (fread(buf + sizeof(hdr), 1, hdr.filesize - sizeof(hdr), f) != hdr.filesize - sizeof(hdr))
 		goto error;
 		
@@ -521,186 +588,6 @@ void animateiqm(float curframe)
 	}
 }
 
-typedef struct binding
-{
-	const char *name;
-	GLint index;
-} binding;
-
-typedef struct shader
-{
-	const char *name, *vsstr, *psstr;
-	const binding *attribs, *texs;
-	GLuint vs, ps, program, vsobj, psobj;
-} shader;
-
-static void showinfo(GLuint obj, const char *tname, const char *name)
-{
-	GLint length = 0;
-	if (!strcmp(tname, "PROG"))
-		glGetProgramiv_(obj, GL_INFO_LOG_LENGTH, &length);
-	else
-		glGetShaderiv_(obj, GL_INFO_LOG_LENGTH, &length);
-	if (length > 1)
-	{
-		GLchar *log = malloc(sizeof(GLchar) * length);
-		if (!strcmp(tname, "PROG"))
-			glGetProgramInfoLog_(obj, length, &length, log);
-		else
-			glGetShaderInfoLog_(obj, length, &length, log);
-		printf("GLSL ERROR (%s:%s)\n", tname, name);
-		puts(log);
-		free(log);
-	}
-}
-
-static void compshader(GLenum type, GLuint *obj, const char *def, const char *tname, const char *name)
-{
-	const GLchar *source = (const GLchar *)(def + strspn(def, " \t\r\n"));
-	*obj = glCreateShader_(type);
-	glShaderSource_(*obj, 1, &source, NULL);
-	glCompileShader_(*obj);
-	GLint success;
-	glGetShaderiv_(*obj, GL_COMPILE_STATUS, &success);
-	if (!success)
-	{
-		showinfo(*obj, tname, name);
-		glDeleteShader_(*obj);
-		*obj = 0;
-		fprintf(stderr, "error compiling shader\n");
-		exit(EXIT_FAILURE);
-	}
-}
-
-void shader_link(shader *s)
-{
-	s->program = s->vsobj && s->psobj ? glCreateProgram_() : 0;
-	GLint success = 0;
-	if (s->program)
-	{
-		glAttachShader_(s->program, s->vsobj);
-		glAttachShader_(s->program, s->psobj);
-		
-		if (s->attribs)
-			for (const binding *a = s->attribs; a->name; a++)
-				glBindAttribLocation_(s->program, a->index, a->name);
-				
-		glLinkProgram_(s->program);
-		glGetProgramiv_(s->program, GL_LINK_STATUS, &success);
-	}
-	if (!success)
-	{
-		if (s->program)
-		{
-			showinfo(s->program, "PROG", s->name);
-			glDeleteProgram_(s->program);
-			s->program = 0;
-		}
-		fprintf(stderr, "error linking shader\n");
-		exit(EXIT_FAILURE);
-	}
-}
-
-void shader_compile(shader *s)
-{
-	if (!s->vsstr || !s->psstr)
-		return;
-	compshader(GL_VERTEX_SHADER,   &s->vsobj, s->vsstr, "VS", s->name);
-	compshader(GL_FRAGMENT_SHADER, &s->psobj, s->psstr, "PS", s->name);
-	shader_link(s);
-}
-
-GLint shader_getparam(shader *s, const char *pname)
-{
-	return glGetUniformLocation_(s->program, pname);
-}
-
-void shader_set(shader *s)
-{
-	glUseProgram_(s->program);
-	if (!s->texs)
-		return;
-	GLint loc;
-	for (const binding *t = s->texs; t->name; t++)
-	{
-		loc = shader_getparam(s, t->name);
-		if (loc != -1)
-			glUniform1i_(loc, t->index);
-	}
-}
-
-binding gpuskinattribs[] = {{"vtangent", 1}, {"vweights", 6}, {"vbones", 7}, {NULL, -1}};
-binding gpuskintexs[] = {{"tex", 0}, {NULL, -1}};
-static shader gpuskin =
-{
-	"gpu skin",
-	
-	"#version 120\n"
-	"#ifdef GL_ARB_uniform_buffer_object\n"
-	"  #extension GL_ARB_uniform_buffer_object : enable\n"
-	"  layout(std140) uniform animdata\n"
-	"  {\n"
-	"     uniform mat3x4 bonemats[80];\n"
-	"  };\n"
-	"#else\n"
-	"  uniform mat3x4 bonemats[80];\n"
-	"#endif\n"
-	"attribute vec4 vweights;\n"
-	"attribute vec4 vbones;\n"
-	"attribute vec4 vtangent;\n"
-	"void main(void)\n"
-	"{\n"
-	"   mat3x4 m = bonemats[int(vbones.x)] * vweights.x;\n"
-	"   m += bonemats[int(vbones.y)] * vweights.y;\n"
-	"   m += bonemats[int(vbones.z)] * vweights.z;\n"
-	"   m += bonemats[int(vbones.w)] * vweights.w;\n"
-	"   vec4 mpos = vec4(gl_Vertex * m, gl_Vertex.w);\n"
-	"   gl_Position = gl_ModelViewProjectionMatrix * mpos;\n"
-	"   gl_TexCoord[0] = gl_MultiTexCoord0;\n"
-	"   mat3 madjtrans = mat3(cross(m[1].xyz, m[2].xyz), cross(m[2].xyz, m[0].xyz), cross(m[0].xyz, m[1].xyz));\n"
-	"   vec3 mnormal = gl_Normal * madjtrans;\n"
-	"   vec3 mtangent = vtangent.xyz * madjtrans; // tangent not used, just here as an example\n"
-	"   vec3 mbitangent = cross(mnormal, mtangent) * vtangent.w; // bitangent not used, just here as an example\n"
-	"   gl_FrontColor = gl_Color * (clamp(dot(normalize(gl_NormalMatrix * mnormal), gl_LightSource[0].position.xyz), 0.0, 1.0) * gl_LightSource[0].diffuse + gl_LightSource[0].ambient);\n"
-	"}\n",
-	
-	"uniform sampler2D tex;\n"
-	"void main(void)\n"
-	"{\n"
-	"   gl_FragColor = gl_Color * texture2D(tex, gl_TexCoord[0].xy);\n"
-	"}\n",
-	
-	gpuskinattribs,
-	gpuskintexs,
-	0, 0, 0, 0, 0
-};
-
-binding noskinattribs[] = {{"vtangent", 1}, {NULL, -1}};
-binding noskintexs[] = {{"tex", 0}, {NULL, -1}};
-static shader noskin =
-{
-	"no skin",
-	
-	"attribute vec4 vtangent;\n"
-	"void main(void)\n"
-	"{\n"
-	"   gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
-	"   gl_TexCoord[0] = gl_MultiTexCoord0;\n"
-	"   vec3 vbitangent = cross(gl_Normal, vtangent.xyz) * vtangent.w; // bitangent not used, just here as an example\n"
-	"   gl_FrontColor = gl_Color * (clamp(dot(normalize(gl_NormalMatrix * gl_Normal), gl_LightSource[0].position.xyz), 0.0, 1.0) * gl_LightSource[0].diffuse + gl_LightSource[0].ambient);\n"
-	"}\n",
-	
-	"uniform sampler2D tex;\n"
-	"void main(void)\n"
-	"{\n"
-	"   gl_FragColor = gl_Color * texture2D(tex, gl_TexCoord[0].xy);\n"
-	"}\n",
-	
-	noskinattribs,
-	noskintexs,
-	0, 0, 0, 0, 0
-};
-
 
 float scale = 1, rotate = 0;
 vec3 translate = {0, 0, 0};
@@ -726,6 +613,10 @@ void renderiqm()
 	glLightfv(GL_LIGHT0, GL_AMBIENT, ambientcol);
 	glLightfv(GL_LIGHT0, GL_DIFFUSE, diffusecol);
 	glLightfv(GL_LIGHT0, GL_POSITION, lightdir);
+	
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT0);
+	glEnable(GL_NORMALIZE);
 	
 	glColor3f(1, 1, 1);
 	
@@ -760,6 +651,14 @@ void renderiqm()
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_NORMAL_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	
+	if (incolor)
+	{
+		glColorPointer(4, GL_UNSIGNED_BYTE, 0, incolor);
+		
+		glEnableClientState(GL_COLOR_ARRAY);
+	}
+
 	glEnableVertexAttribArray_(1);
 	if (numframes > 0)
 	{
@@ -769,13 +668,16 @@ void renderiqm()
 		glEnableVertexAttribArray_(7);
 	}
 	
-	iqmtriangle *tris = NULL;
+	glEnable(GL_TEXTURE_2D);
+	iqmtriangle *tindex = NULL;
 	for (int i = 0; i < nummeshes; i++)
 	{
 		iqmmesh *m = meshes + i;
 		glBindTexture(GL_TEXTURE_2D, textures[i] ? textures[i] : notexture);
-		glDrawElements(GL_TRIANGLES, 3 * m->num_triangles, GL_UNSIGNED_INT, &tris[m->first_triangle]);
+		glDrawElements(GL_TRIANGLES, 3 * m->num_triangles, GL_UNSIGNED_INT, &tindex[m->first_triangle]);
 	}
+	
+	glDisable(GL_TEXTURE_2D);
 	
 	glDisableClientState(GL_VERTEX_ARRAY);
 	glDisableClientState(GL_NORMAL_ARRAY);
@@ -786,9 +688,15 @@ void renderiqm()
 		glDisableVertexAttribArray_(6);
 		glDisableVertexAttribArray_(7);
 	}
-	
 	glBindBuffer_(GL_ELEMENT_ARRAY_BUFFER, 0);
 	glBindBuffer_(GL_ARRAY_BUFFER, 0);
+	
+	if (incolor)
+		glDisableClientState(GL_COLOR_ARRAY);
+		
+	glDisable(GL_NORMALIZE);
+	glDisable(GL_LIGHT0);
+	glDisable(GL_LIGHTING);
 	
 	glPopMatrix();
 }
@@ -802,6 +710,7 @@ void initgl()
 	glDepthFunc(GL_LESS);
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
+	notexture = loadtexture("notexture.tga", 0);
 	
 	shader_compile(&gpuskin);
 	
@@ -819,7 +728,6 @@ void initgl()
 	
 	shader_compile(&noskin);
 	
-	notexture = loadtexture("notexture.tga", 0);
 }
 
 int scrw = 0, scrh = 0;
@@ -863,7 +771,6 @@ void timerfunc(float dt)
 	animate += dt;
 }
 
-#define VSYNC 0
 void displayfunc(GLFWwindow *window)
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -925,7 +832,7 @@ int main(int argc, char **argv)
 	//glfwWindowHint(GLFW_DEPTH_BITS, 24);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-	GLFWwindow *window = glfwCreateWindow(640, 480, "IQM GPU Skinning Demo", NULL, NULL);
+	GLFWwindow *window = glfwCreateWindow(640, 480, WINDOW_TITLE, NULL, NULL);
 	
 	if (!window)
 	{
