@@ -11,8 +11,49 @@
 
 #include "iqm.h"
 #include "common.h"
+#include "stb_easy_font.h"
+
 #define VSYNC 0
 #define WINDOW_TITLE "IQM GPU Skinning Demo"
+
+extern GLuint loadtexture(const char *name, int clamp);
+
+int FPS = 0;
+const char *modelname = "mrfixit.iqm";
+char keyinfo[50000];
+int keyinfo_numquads = 0;
+
+static void print_keyinfo(float x,  float y)
+{
+	char textbuf[256];
+	snprintf(textbuf, sizeof textbuf,
+		"MODEL: %s\n"
+		"---------------\n"
+		"[A] TURN LEFT\n"
+		"[D] TURN RIGHT\n"
+		"[S] MOVE AWAY\n"
+		"[W] MOVE CLOSER\n"
+		"[Q] MOVE DOWN\n"
+		"[E] MOVE UP\n",
+		modelname);
+	keyinfo_numquads = stb_easy_font_print(x, y, textbuf, NULL, keyinfo, sizeof keyinfo);
+}
+
+static void glprintf(float x, float y, char *format, ...)
+{
+	char textbuf[256];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(textbuf, sizeof textbuf, format, args);
+	va_end(args);
+	
+	static char buffer[99999]; // ~500 chars
+	int num_quads;
+
+	num_quads = stb_easy_font_print(x, y, textbuf, NULL, buffer, sizeof buffer);
+	glVertexPointer(2, GL_FLOAT, 16, buffer);
+	glDrawArrays(GL_QUADS, 0, num_quads*4);
+}
 
 #define REGISTER_EXTENSIONS \
 	REXT(PFNGLUSEPROGRAMPROC, glUseProgram, true) \
@@ -269,7 +310,7 @@ typedef struct vertex_s
 	GLubyte blendweight[4];
 } vertex;
 
-extern GLuint loadtexture(const char *name, int clamp);
+
 
 // Note that while this demo stores pointer directly into mesh data in a buffer
 // of the entire IQM file's data, it is recommended that you copy the data and
@@ -479,12 +520,12 @@ bool loadiqmanims(const char *filename, const iqmheader *hdr, uint8_t *buf)
 		bounds = (iqmbounds *) &buf[hdr->ofs_bounds];
 	
 	mat3x4 mat;
+	float rotate[4], translate[3], scale[3];
 	for (int i = 0; i < (int) hdr->num_frames; i++)
 	{
 		for (int j = 0; j < (int) hdr->num_poses; j++)
 		{
 			iqmpose *p = poses + j;
-			float rotate[4], translate[3], scale[3];
 			translate[0] = p->channeloffset[0]; if (p->mask &  0x01) translate[0] += *framedata++ * p->channelscale[0];
 			translate[1] = p->channeloffset[1]; if (p->mask &  0x02) translate[1] += *framedata++ * p->channelscale[1];
 			translate[2] = p->channeloffset[2]; if (p->mask &  0x04) translate[2] += *framedata++ * p->channelscale[2];
@@ -703,7 +744,7 @@ void renderiqm()
 
 void initgl()
 {
-	glClearColor(0, 0, 0, 0);
+	glClearColor(0.2, 0.2, 0.2, 0);
 	glClearDepth(1);
 	glDisable(GL_FOG);
 	glEnable(GL_DEPTH_TEST);
@@ -771,6 +812,28 @@ void timerfunc(float dt)
 	animate += dt;
 }
 
+void drawui()
+{
+	shader_set(&noskin);
+	
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, scrw, scrh, 0, -100, 100);
+	
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	
+	glColor4f(1, 1, 1, 1);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	
+	glBindTexture(GL_TEXTURE_2D, notexture);
+	glprintf(5, 5, "FPS: %i", FPS);
+	glVertexPointer(2, GL_FLOAT, 16, keyinfo);
+	glDrawArrays(GL_QUADS, 0, keyinfo_numquads * 4);
+	
+	glDisableClientState(GL_VERTEX_ARRAY);
+}
+
 void displayfunc(GLFWwindow *window)
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -779,7 +842,8 @@ void displayfunc(GLFWwindow *window)
 	
 	animateiqm(animate);
 	renderiqm();
-	
+	drawui();
+
 #if VSYNC == 0
 	(void) window;
 	glFlush();
@@ -848,23 +912,24 @@ int main(int argc, char **argv)
 	loadexts();
 	
 	atexit(cleanupiqm);
-	if (!meshdata && !loadiqm("mrfixit.iqm"))
+	if (!meshdata && !loadiqm(modelname))
 		return EXIT_FAILURE;
-		
+	
+	print_keyinfo(5, 25);
 	initgl();
 	
-	int fps = 0;
+	int framecount = 0;
 	double curtime = 0, prevtime = 0, dt = 0;
 	while (!glfwWindowShouldClose(window))
 	{
 		dt = curtime;
 		curtime = glfwGetTime();
 		dt = curtime - dt;
-		fps++;
+		framecount++;
 		if (curtime - prevtime >= 1.0)
 		{
-			printf("fps: %i\n", fps);
-			fps = 0;
+			FPS = framecount;
+			framecount = 0;
 			prevtime = curtime;
 		}
 		int width, height;

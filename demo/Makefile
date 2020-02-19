@@ -1,5 +1,4 @@
-CXXFLAGS= -Wall -Wextra -pedantic -std=c99 -O2 -fomit-frame-pointer
-#override CXXFLAGS+= -Wall -fsigned-char
+CFLAGS= -Wall -Wextra -pedantic -std=c99 -O2
 
 LIBS=-lglfw -lGL -lm
 OBJS= \
@@ -14,13 +13,19 @@ default: all
 all: demo gpu-demo
 
 clean:
-	-$(RM) $(OBJS) $(GPU_OBJS) demo gpu-demo
+	-$(RM) *.o demo gpu-demo
 
 demo: $(OBJS)
-	$(CC) $(CXXFLAGS) -o demo $(OBJS) $(LIBS)
+	$(CC) $(CFLAGS) -o demo $(OBJS) $(LIBS)
 
 gpu-demo: $(GPU_OBJS)
-	$(CC) $(CXXFLAGS) -o gpu-demo $(GPU_OBJS) $(LIBS)
+	$(CC) $(CFLAGS) -o gpu-demo $(GPU_OBJS) $(LIBS)
 
-%.o: %.c
-	$(CC) $(CXXFLAGS) -c -o $@ $<
+gpu-demo.o: gpu-demo.c common.h iqm.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+demo.o: demo.c common.h iqm.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+texture.o: texture.c scale.h
+	$(CC) $(CFLAGS) -c -o $@ $<
