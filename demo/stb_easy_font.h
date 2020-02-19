@@ -82,46 +82,6 @@
 //   github:vassvik    --  bug report
 //   github:podsvirov  --  fix multiple definition errors
 
-#if 0
-// SAMPLE CODE:
-//
-//    Here's sample code for old OpenGL; it's a lot more complicated
-//    to make work on modern APIs, and that's your problem.
-//
-void print_string(float x, float y, char *text, float r, float g, float b)
-{
-  static char buffer[99999]; // ~500 chars
-  int num_quads;
-
-  num_quads = stb_easy_font_print(x, y, text, NULL, buffer, sizeof(buffer));
-
-  glColor3f(r,g,b);
-  glEnableClientState(GL_VERTEX_ARRAY);
-  glVertexPointer(2, GL_FLOAT, 16, buffer);
-  glDrawArrays(GL_QUADS, 0, num_quads*4);
-  glDisableClientState(GL_VERTEX_ARRAY);
-}
-
-void print_string(float x, float y, char *format, ...)
-{
-	char textbuf[256];
-	va_list args;
-	va_start(args, format);
-	vsnprintf(textbuf, sizeof textbuf, format, args);
-	va_end(args);
-	
-	static char buffer[99999]; // ~500 chars
-	int num_quads;
-
-	num_quads = stb_easy_font_print(x, y, textbuf, NULL, buffer, sizeof(buffer));
-
-	glColor4f(1, 0, 1, 1);
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, 16, buffer);
-	glDrawArrays(GL_QUADS, 0, num_quads*4);
-	glDisableClientState(GL_VERTEX_ARRAY);
-}
-#endif
 
 #ifndef INCLUDE_STB_EASY_FONT_H
 #define INCLUDE_STB_EASY_FONT_H
@@ -211,7 +171,7 @@ static int stb_easy_font_draw_segs(float x, float y, unsigned char *segs, int nu
 }
 
 static float stb_easy_font_spacing_val = 0;
-static void stb_easy_font_spacing(float spacing)
+void stb_easy_font_spacing(float spacing)
 {
    stb_easy_font_spacing_val = spacing;
 }
@@ -247,7 +207,7 @@ static int stb_easy_font_print(float x, float y, char *text, unsigned char color
     return (unsigned) offset/64;
 }
 
-static int stb_easy_font_width(char *text)
+int stb_easy_font_width(char *text)
 {
     float len = 0;
     float max_len = 0;
@@ -265,7 +225,7 @@ static int stb_easy_font_width(char *text)
     return (int) ceil(max_len);
 }
 
-static int stb_easy_font_height(char *text)
+int stb_easy_font_height(char *text)
 {
     float y = 0;
     int nonempty_line=0;
